@@ -1,0 +1,40 @@
+name: Build Island release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, for example 0.11.1 (increase for each release)'
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: island-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build self-contained installer and update package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: https://github.com/${{ github.repository }}
+        run: |
+          ./build-installer.ps1 -Version $env:RELEASE_VERSION -GitHubRepository $env:RELEASE_REPOSITORY
+      - name: Create draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          $assets = @(Get-ChildItem -LiteralPath release/modern -File | ForEach-Object FullName)
+          gh release create "v$env:RELEASE_VERSION" @assets --draft --title "Island $env:RELEASE_VERSION" --generate-notes --target $env:RELEASE_COMMIT
+          if ($LASTEXITCODE) { throw 'Draft release creation failed' }

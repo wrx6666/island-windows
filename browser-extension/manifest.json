@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Island Music Bridge",
+  "version": "0.10.1",
+  "description": "Передаёт трек Яндекс Музыки/VK в Island: обложка, пауза и переключение треков.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtd4BVuwtnmqyH/uR/KQp5iekCvTKQlJx1CFT0a5vcWT32WPHYB3/NIxWhhQ0rDuMwCTLO2VMo6TS9Pd/wP+HguhyLSUFNtOmmdqSG9IOro3S451zaHMtuPHjMcysVIA1bPMi5hvParwNCkKUeuXsQknC+k+52KGy/Zxd4B3hq7uCvkcsjhJqSO4nQJHAAYtNId6wb8ooOqTWxGDzKeUGysEfX8uJh49CixJd7tdXS75jvdLpD7Al6J37NDjDkO42G19bt6xAY6O6ipJyGRrZTcB+76CIWbb7UpNR3uWtuZ4cCzvo7PZ+bbqS/z7eiH/w2IxXI72sT1z08XhaCYxYgwIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://music.yandex.ru/*",
+        "https://music.yandex.com/*",
+        "https://vk.com/*",
+        "https://vk.ru/*",
+        "https://music.vk.com/*"
+      ],
+      "js": [
+        "page.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://music.yandex.ru/*",
+        "https://music.yandex.com/*",
+        "https://vk.com/*",
+        "https://vk.ru/*",
+        "https://music.vk.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "Island · подключение музыки",
+    "default_popup": "popup.html"
+  },
+  "host_permissions": [
+    "https://music.yandex.ru/*",
+    "https://music.yandex.com/*",
+    "https://vk.com/*",
+    "https://vk.ru/*",
+    "https://music.vk.com/*"
+  ]
+}

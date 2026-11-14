@@ -1,0 +1,24 @@
+name: Source checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build and run core checks
+        shell: pwsh
+        run: ./build-modern.ps1 -Test
+      - name: Check browser extension
+        shell: pwsh
+        run: node --test browser-extension/page.test.cjs browser-extension/background.test.cjs

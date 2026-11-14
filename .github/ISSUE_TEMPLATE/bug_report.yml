@@ -1,0 +1,30 @@
+name: Ошибка в Island
+description: Сообщить о проблеме с интерфейсом, музыкой или обновлением
+title: '[Bug] '
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия Island и Windows
+      placeholder: Island 0.11.0, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что произошло?
+      description: Опиши ожидаемое поведение и то, что получилось.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить?
+      description: Для музыки укажи сервис и браузер, без данных аккаунта.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Дополнительные сведения
+      description: Можно приложить снимок экрана. Убери личные данные, токены и пути пользователя; не загружай профиль браузера.

@@ -1,0 +1,58 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="GlassEdge" Color="#38383D"/>
+  <LinearGradientBrush x:Key="GlassFill" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#202022"/><GradientStop Color="#101011" Offset="1"/></LinearGradientBrush>
+  <Style x:Key="FluentIcon" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+    <Setter Property="FontSize" Value="24"/><Setter Property="Foreground" Value="#F6F7FB"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style x:Key="GlassIconButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#F6F7FB"/>
+    <Setter Property="BorderThickness" Value="0"/><Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <Grid x:Name="Hit" Background="Transparent"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Hit" Property="Opacity" Value=".78"/></Trigger>
+        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Hit" Property="Opacity" Value=".5"/></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Hit" Property="Opacity" Value=".32"/></Trigger>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Hit" Property="Opacity" Value=".75"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="GlassTabButton" TargetType="Button" BasedOn="{StaticResource GlassIconButton}">
+    <Setter Property="FontSize" Value="10.5"/><Setter Property="Padding" Value="7,3"/><Setter Property="Margin" Value="2,0"/>
+    <Setter Property="Foreground" Value="#BFCAD0"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <Border x:Name="Tab" CornerRadius="12" Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+      <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tab" Property="Background" Value="#273B43"/><Setter Property="Foreground" Value="#F6F7FB"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Tab" Property="Opacity" Value=".65"/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="GlassPauseButton" TargetType="Button" BasedOn="{StaticResource GlassIconButton}">
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+      <Grid x:Name="Disk" RenderTransformOrigin=".5,.5">
+        <Grid.RenderTransform><ScaleTransform/></Grid.RenderTransform>
+        <Border Background="{TemplateBinding Background}" CornerRadius="32"/>
+        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Grid>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Disk" Property="Opacity" Value=".92"/></Trigger>
+        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Disk" Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX=".96" ScaleY=".96"/></Setter.Value></Setter></Trigger>
+        <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Disk" Property="Opacity" Value=".4"/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="GlassSlider" TargetType="Slider">
+    <Setter Property="Foreground" Value="#F6F7FB"/><Setter Property="Background" Value="#434348"/>
+    <Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="IsMoveToPointEnabled" Value="True"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
+      <Grid Background="Transparent" Height="30">
+        <Track x:Name="PART_Track" VerticalAlignment="Center">
+          <Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate><Border Height="4" CornerRadius="2" Background="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Slider}}" BorderBrush="#78FFFFFF" BorderThickness=".45"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+          <Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate><Border Height="4" CornerRadius="2" Background="{Binding Background,RelativeSource={RelativeSource AncestorType=Slider}}" BorderBrush="#3AFFFFFF" BorderThickness=".45"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+          <Track.Thumb><Thumb><Thumb.Template><ControlTemplate><Border Width="10" Height="10" CornerRadius="5" Background="#F6F7FB"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+        </Track>
+      </Grid>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+</ResourceDictionary>

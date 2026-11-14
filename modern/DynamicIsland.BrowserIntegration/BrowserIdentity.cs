@@ -1,0 +1,1 @@
+namespace Island { public static class BrowserIdentity { public const string ExtensionId = "cenafhkghbeeekflmdipijpkoejojlfn"; public const string Origin = "chrome-extension://cenafhkghbeeekflmdipijpkoejojlfn/"; } }
