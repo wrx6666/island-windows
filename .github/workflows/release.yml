@@ -1,5 +1,8 @@
 name: Build Island release
 on:
+  push:
+    branches: [main]
+    paths: [release-version.txt]
   workflow_dispatch:
     inputs:
       version:
@@ -19,22 +22,40 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate release version
+        id: release
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:INPUT_VERSION) { $env:INPUT_VERSION } else { (Get-Content -LiteralPath release-version.txt -Raw).Trim() }
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw 'Invalid version' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Check source and browser extension
+        shell: pwsh
+        run: |
+          ./build-modern.ps1 -Test
+          node --test browser-extension/page.test.cjs browser-extension/background.test.cjs
+          if ($LASTEXITCODE) { throw 'Browser extension checks failed' }
       - name: Build self-contained installer and update package
         shell: pwsh
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
           RELEASE_REPOSITORY: https://github.com/${{ github.repository }}
         run: |
           ./build-installer.ps1 -Version $env:RELEASE_VERSION -GitHubRepository $env:RELEASE_REPOSITORY
-      - name: Create draft release
+      - name: Publish release with all update assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
           if ($env:RELEASE_VERSION -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           $assets = @(Get-ChildItem -LiteralPath release/modern -File | ForEach-Object FullName)
-          gh release create "v$env:RELEASE_VERSION" @assets --draft --title "Island $env:RELEASE_VERSION" --generate-notes --target $env:RELEASE_COMMIT
-          if ($LASTEXITCODE) { throw 'Draft release creation failed' }
+          gh release create "v$env:RELEASE_VERSION" @assets --title "Island $env:RELEASE_VERSION" --generate-notes --target $env:RELEASE_COMMIT --latest
+          if ($LASTEXITCODE) { throw 'Release creation failed' }
