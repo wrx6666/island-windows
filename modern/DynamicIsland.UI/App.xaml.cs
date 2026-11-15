@@ -39,7 +39,7 @@ public partial class App : Application
             scenario=DiagnosticHost && !e.Args.Contains("--live-check");isolated=e.Args.Contains("--isolated") || scenario;
             dataDirectory=Path.GetFullPath(Value(e.Args,"--data")??(!isolated && AppDistribution.Installed?AppDistribution.DataDirectory:Path.Combine(AppContext.BaseDirectory,"data")));Directory.CreateDirectory(dataDirectory);
             Settings.FilePath=Path.Combine(dataDirectory,"island.settings");
-            if(!isolated && AppDistribution.Installed){Settings.Import(Path.Combine(AppContext.BaseDirectory,"data"),dataDirectory);Island.Startup.Executable=AppDistribution.StableLauncher;}
+            if(!isolated && AppDistribution.Installed){Settings.Import(Path.Combine(AppContext.BaseDirectory,"data"),dataDirectory);Island.Startup.Executable=AppDistribution.StableLauncher;try{AppDistribution.PrepareExtension();}catch(Exception ex)when(ex is IOException or UnauthorizedAccessException){Log("Extension folder: "+ex.Message);}}
             if(!isolated)Settings.Import(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Island"),dataDirectory);
             Config=Settings.Load();Config.OverlayPinned=false;
             Updates=new(Config,dataDirectory,Stop);
@@ -80,7 +80,18 @@ public partial class App : Application
     private void ClockTick(){Panel.UpdateClock();minute.Interval=(int)Math.Max(1000,60000-DateTime.Now.TimeOfDay.TotalMilliseconds%60000);minute.Start();}
     private void TimelineTick(){Panel.UpdateTimeline();if(Panel.IsVisible && Panel.ExpandedState && Music.Current.Playing){timeline.Interval=1000;timeline.Start();}}
     private void MusicChanged(){if(stopping)return;Launch.Observe(Music.Current);Panel.SetTrack(Music.Current);Overlay.Playing=Music.Current.Available && Music.Current.Playing;Overlay.Reconcile();VisibilityChanged();}
-    private async void Play(){Panel.Diagnostics?.Input();try{bool ok=Music.HasControlSession?await Music.Toggle():await Launch.Play();if(!ok)tray.Notify(string.IsNullOrEmpty(Launch.Failure)?Music.CommandFailure:Launch.Failure);}catch(Exception ex){tray.Notify(ex.Message);}}
+    private async void Play()
+    {
+        Panel.Diagnostics?.Input();
+        if(Launch.Busy || Music.CommandPending)return;
+        try
+        {
+            bool pause=Music.HasControlSession && Music.Current.Playing;
+            bool ok=pause?await Music.Toggle():await Launch.Play();
+            if(!ok)tray.Notify(pause?Music.CommandFailure:Launch.Failure);
+        }
+        catch(Exception ex){tray.Notify(ex.Message);}
+    }
     private async void Skip(bool next){Panel.Diagnostics?.Input();if(!await Music.Skip(next))tray.Notify(Music.CommandFailure);}
     private async void Seek(double seconds){if(!await Music.Seek(seconds))tray.Notify(Music.CommandFailure);}
     private async void Mute(){try{tray.Notify(await Mixer.Toggle(Config.AudioProcess));}catch(Exception ex){tray.Notify(ex.Message);}}

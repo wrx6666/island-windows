@@ -61,11 +61,11 @@ public static class BrowserChecks
     }
     private static async Task LaunchChecks(string directory)
     {
-        Settings.FilePath=Path.Combine(directory,"launch.settings");int starts=0;var fake=new FakeMusic();await using(var launch=new MusicLaunch(fake,new Settings(),_=>false,(_,_)=>{starts++;return Task.CompletedTask;}){WaitMilliseconds=120})
+        Settings.FilePath=Path.Combine(directory,"launch.settings");int starts=0;var fake=new FakeMusic();await using(var launch=new MusicLaunch(fake,new Settings(),_=>false,(_,_)=>{starts++;return Task.CompletedTask;}){WaitMilliseconds=120,StartupBridgeWaitMilliseconds=20})
         {
-            var a=launch.Play();var b=launch.Play();Check(ReferenceEquals(a,b),"Repeated cold Play shares one task");Check(!await a && starts==1,"Missing extension times out after one browser start");Check(!await launch.Play() && starts==1,"Launch backoff avoids duplicate browser processes");
+            var a=launch.Play();var b=launch.Play();Check(ReferenceEquals(a,b),"Repeated cold Play shares one task");Check(!await a && starts==2,"Missing extension opens service URL once after bootstrap");Check(!await launch.Play() && starts==2,"Launch backoff avoids duplicate browser invocations");
         }
-        starts=0;await using(var launch=new MusicLaunch(new FakeMusic(),new Settings(),_=>true,(_,_)=>{starts++;return Task.CompletedTask;}){WaitMilliseconds=100}){Check(!await launch.Play() && starts==0,"Existing browser without bridge does not receive duplicate tab launch");}
+        starts=0;await using(var launch=new MusicLaunch(new FakeMusic(),new Settings(),_=>true,(_,_)=>{starts++;return Task.CompletedTask;}){WaitMilliseconds=100,ExistingBridgeWaitMilliseconds=20}){Check(!await launch.Play() && starts==1,"Existing background browser opens music URL once without bridge");Check(!await launch.Play() && starts==1,"Repeat Play does not create another fallback tab");}
         fake=new FakeMusic{HasControlSession=true};await using(var launch=new MusicLaunch(fake,new Settings(),_=>throw new Exception("unnecessary process inspection"),(_,_)=>throw new Exception("unnecessary browser"))){Check(await launch.Play() && fake.Plays==1,"Existing session reused without browser launch");}
         fake=new FakeMusic{LaunchBridgeReady=true};await using(var launch=new MusicLaunch(fake,new Settings(),_=>false,(_,_)=>throw new Exception("duplicate browser"))){Check(await launch.Play() && fake.Launches==1,"Connected bridge launches service through existing browser");}
     }

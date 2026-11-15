@@ -17,10 +17,12 @@ namespace Island
         private LastMusicSession nextHistory;
         private Task historyWrite;
         private DateTime lastBrowserStart = DateTime.MinValue;
+        private DateTime lastNavigation = DateTime.MinValue;
         public string HistoryError = "";
         public readonly LastMusicSession Last = LastMusicSession.Load();
         public string Status = "", Failure = "";
         public int WaitMilliseconds = 20000;
+        public int StartupBridgeWaitMilliseconds = 5000, ExistingBridgeWaitMilliseconds = 1500;
         public Func<string, bool> BrowserRunning ;
         public Func<string, string, Task> StartBrowser ;
         public event Action Changed;
@@ -60,25 +62,45 @@ namespace Island
             {
                 State("Проверяем музыкальную сессию…");
                 if (!music.Initialized) await music.WaitUntil(() => music.Initialized, 2000, stop.Token);
-                if (music.HasControlSession) { bool accepted = await music.PlayExisting(); if (!accepted) Failure = music.CommandFailure; State(accepted ? "Музыка играет" : Failure); return accepted; }
+                if (music.HasControlSession)
+                {
+                    if (await music.PlayExisting()) { State("Музыка играет"); return true; }
+                    // A stale Windows media session must not prevent opening the service.
+                    // A connected browser already supplies an actionable player error.
+                    if (music.LaunchBridgeReady || !settings.Launch.OnPlay) return Fail(music.CommandFailure);
+                }
                 if (!settings.Launch.OnPlay) return Fail("Запуск сервиса по Play отключён в настройках.");
                 string service = settings.Launch.Restore && Last.Available ? Last.Service : settings.Launch.Service;
                 string url = settings.Launch.Restore && Last.Available && Last.Url != null && Last.Url.Length > 0 ? Last.Url : MusicLaunchOptions.Home(service);
                 if (!music.LaunchBridgeReady)
                 {
-                    if (await Task.Run(() => BrowserRunning(settings.Launch.Browser))) State("Ждём Island Music Bridge…");
-                    else
+                    bool running = await Task.Run(() => BrowserRunning(settings.Launch.Browser));
+                    if (!running)
                     {
-                        State("Открываем музыкальный сервис…");
+                        State("Запускаем браузер для музыки…");
                         if ((DateTime.UtcNow - lastBrowserStart).TotalSeconds < 30) return Fail("Браузер уже запускался. Подожди подключения расширения и повтори Play через несколько секунд.");
                         lastBrowserStart = DateTime.UtcNow;
-                        await StartBrowser(settings.Launch.Browser, url);
+                        // Let the bridge reuse restored tabs before opening a URL ourselves.
+                        await StartBrowser(settings.Launch.Browser, "");
                     }
-                    if (!await music.WaitUntil(() => music.LaunchBridgeReady, WaitMilliseconds, stop.Token) && !stop.IsCancellationRequested)
-                        return Fail("Браузер не подключил обновлённый Island Music Bridge. Включи расширение 0.10.0 в выбранном профиле и обнови музыкальную вкладку. Повторная вкладка не создавалась.");
+                    State("Ждём подключения музыкального управления…");
+                    await music.WaitUntil(() => music.LaunchBridgeReady, running ? ExistingBridgeWaitMilliseconds : StartupBridgeWaitMilliseconds, stop.Token);
+                    if (stop.IsCancellationRequested) return false;
+                    if (!music.LaunchBridgeReady)
+                    {
+                        // A background browser process is not proof of an open window or
+                        // enabled extension. Open the service once, rather than waiting forever.
+                        if ((DateTime.UtcNow - lastNavigation).TotalSeconds < 30)
+                            return Fail("Музыкальный сервис уже открыт. Включи Island Music Bridge в браузере и повтори Play; новая вкладка не создавалась.");
+                        lastNavigation = DateTime.UtcNow;
+                        State("Открываем музыкальный сервис…");
+                        await StartBrowser(settings.Launch.Browser, url);
+                        if (!await music.WaitUntil(() => music.LaunchBridgeReady, WaitMilliseconds, stop.Token))
+                            return stop.IsCancellationRequested ? false : Fail("Сервис открыт, но Island Music Bridge не подключён. Включи расширение в выбранном профиле браузера. Без него Island может управлять только уже доступным плеером Windows и не может гарантировать автоматическое начало музыки.");
+                    }
                 }
                 if (stop.IsCancellationRequested) return false;
-                if (music.HasControlSession) { bool accepted = await music.PlayExisting(); if (!accepted) return Fail(music.CommandFailure); State("Музыка играет"); return true; }
+                // Route through the selected service, not an unrelated/stale Windows session.
                 State("Ждём плеер и запускаем музыку…");
                 bool ok = await music.LaunchPlay(service, url);
                 if (!ok) return Fail(music.CommandFailure);

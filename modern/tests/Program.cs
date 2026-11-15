@@ -44,7 +44,8 @@ static class Program
             using(var stream=new MemoryStream()) { await BrowserProtocol.Write(stream,"{\"type\":\"track\",\"title\":\"Трек\"}"); stream.Position=0; Check((await BrowserProtocol.Read(stream)).Contains("Трек"),"Native messaging UTF8 framing roundtrip"); }
             bool rejected=false; try { await BrowserProtocol.Read(new MemoryStream(BitConverter.GetBytes(32769))); } catch(InvalidDataException) {rejected=true;} Check(rejected,"Oversize IPC rejected before allocation");
             Check(BrowserMusic.AllowedCover("https://avatars.yandex.net/a") && !BrowserMusic.AllowedCover("https://avatars.yandex.net.evil.test/a"),"Artwork host boundary retained");
-            Console.WriteLine($"{checks} checks passed; .NET {Environment.Version}"); return 0;
+            await Island.Tests.MusicLaunchChecks.Run(directory);
+            Console.WriteLine($"{checks} core checks passed; .NET {Environment.Version}"); return 0;
         }
         catch(Exception ex) {Console.Error.WriteLine(ex);return 1;}
     }

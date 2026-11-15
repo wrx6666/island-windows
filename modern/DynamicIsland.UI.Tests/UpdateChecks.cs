@@ -22,6 +22,12 @@ public static class UpdateChecks
         foreach(var url in new[]{"http://github.com/owner/repo","https://github.com.evil.test/owner/repo","https://github.com/owner/repo/releases","https://github.com/owner/repo?token=secret","file:///C:/update","https://user:secret@github.com/owner/repo"})Check(DistributionConfig.NormalizeRepository(url)=="","Reject unsupported update source");
         string original=Settings.FilePath;Settings.FilePath=Path.Combine(directory,"island.settings");
         try{
+            string source=Path.Combine(directory,"extension-payload"),stable=Path.Combine(directory,"stable-extension");Directory.CreateDirectory(source);
+            foreach(string name in new[]{"background.js","content.js","page.js","popup.html","popup.js","manifest.json"})File.WriteAllText(Path.Combine(source,name),"version one");
+            AppDistribution.CopyExtension(source,stable);var stamp=File.GetLastWriteTimeUtc(Path.Combine(stable,"manifest.json"));AppDistribution.CopyExtension(source,stable);
+            Check(File.GetLastWriteTimeUtc(Path.Combine(stable,"manifest.json"))==stamp,"Unchanged extension files are not rewritten on startup");
+            File.WriteAllText(Path.Combine(source,"background.js"),"version two");AppDistribution.CopyExtension(source,stable);
+            Check(File.ReadAllText(Path.Combine(stable,"background.js"))=="version two" && Directory.GetFiles(stable).Length==6,"Extension updates reuse stable folder without temporary leftovers");
             var config=new Settings();var backend=new Fake{Pending=new()};int stopped=0,notices=0;
             using var service=new AppUpdates(config,directory,()=>{stopped++;return Task.CompletedTask;},backend);service.UpdateAvailable+=_=>notices++;
             var pending=service.CheckAsync();await service.CheckAsync();Check(backend.Checks==1 && service.Busy,"Concurrent checks coalesce without duplicate requests");

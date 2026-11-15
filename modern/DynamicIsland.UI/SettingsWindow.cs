@@ -45,6 +45,11 @@ public sealed class SettingsWindow : Window
         var launch=Tab("Запуск");Label(launch,"Музыкальный сервис");service=Combo(launch,new[]{"Яндекс Музыка","VK Музыка"});service.SelectedIndex=app.Config.Launch.Service=="vk"?1:0;Label(launch,"Браузер");browser=Combo(launch,new[]{"По умолчанию Windows","Яндекс Браузер","Chrome","Edge"});browser.SelectedIndex=Array.IndexOf(new[]{"default","yandex","chrome","edge"},app.Config.Launch.Browser);launchOnPlay=Check(launch,"Запускать сервис по Play",app.Config.Launch.OnPlay);restore=Check(launch,"Продолжать последнюю доступную сессию",app.Config.Launch.Restore);autoPlay=Check(launch,"Автоматически включать музыку после входа в Windows",app.Config.Launch.AutoPlay);
         startupInitial=Startup.Enabled;startup=Check(launch,"Запускать Island вместе с Windows",startupInitial);Label(launch,"Настройки сохраняются при обновлении Island. Точная очередь и позиция трека зависят от музыкального сервиса.");
         Label(launch,"Расширение: "+(app.Bridge.Connected?"подключено":"нет соединения")+" · "+(app.Music.HasControlSession?"плеер обнаружен":"плеер не обнаружен"));
+        Label(launch,"Для запуска музыки в закрытой вкладке нужен включённый Island Music Bridge. Без расширения доступно управление уже существующим плеером Windows. Расширение из режима разработчика браузер может отключать: Island не меняет защитные настройки браузера.");
+        var bridgeFolder=new Button{Content="Папка Music Bridge",HorizontalAlignment=HorizontalAlignment.Left};launch.Children.Add(bridgeFolder);
+        bridgeFolder.Click+=(_,_)=>OpenExtensionFolder(status);
+        var extensions=new Button{Content="Расширения браузера",HorizontalAlignment=HorizontalAlignment.Left};launch.Children.Add(extensions);
+        extensions.Click+=async(_,_)=>{try{await BrowserLaunch.OpenExtensions(new[]{"default","yandex","chrome","edge"}[Math.Max(0,browser.SelectedIndex)]);}catch(Exception ex){status.Text=ex.Message;}};
         Label(launch,"Погодные данные: Open-Meteo · open-meteo.com");
         var updates=Tab("Обновления");Label(updates,"Island · "+app.Updates.CurrentVersion);
         var updateStatus=new TextBlock{TextWrapping=TextWrapping.Wrap,FontSize=13,Margin=new(0,12,0,12)};updates.Children.Add(updateStatus);
@@ -58,11 +63,16 @@ public sealed class SettingsWindow : Window
         Label(updates,"Обновление устанавливается только по нажатию кнопки. Island перезапустится, настройки сохранятся.");
         Label(updates,"Музыка в браузере");Label(updates,"Для Яндекс Музыки и VK включите Island Music Bridge в браузере: Расширения → Режим разработчика → Загрузить распакованное.");
         var extensionFolder=new Button{Content="Открыть папку расширения",FontSize=13,Padding=new(12,8,12,8),HorizontalAlignment=HorizontalAlignment.Left};updates.Children.Add(extensionFolder);
-        extensionFolder.Click+=(_,_)=>{string folder=System.IO.Path.Combine(AppContext.BaseDirectory,"browser-extension");if(System.IO.Directory.Exists(folder))System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe"){ArgumentList={folder},UseShellExecute=true});else updateStatus.Text="Папка расширения поставляется с установщиком Island.";};
+        extensionFolder.Click+=(_,_)=>OpenExtensionFolder(updateStatus);
         outer.Loaded+=async(_,_)=>{try{masterVolume.Value=await EndpointVolume.Level();masterVolume.Value*=100;await RefreshApps();}catch(Exception ex){status.Text=ex.Message;}finally{loaded=true;}};
         apps.SelectionChanged+=async(_,_)=>{if(!loaded)return;try{float level=await app.Mixer.MusicVolume(apps.Text,null);if(level>=0){loaded=false;appVolume.Value=level*100;loaded=true;}}catch(Exception ex){status.Text=ex.Message;}};
     }
     private static void Label(Panel panel,string text)=>panel.Children.Add(new TextBlock{Text=text,TextWrapping=TextWrapping.Wrap,Margin=new(0,10,0,4),FontSize=13});
+    private void OpenExtensionFolder(TextBlock message)
+    {
+        try{AppDistribution.PrepareExtension();string folder=AppDistribution.ExtensionDirectory;if(System.IO.Directory.Exists(folder))System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe"){ArgumentList={folder},UseShellExecute=true});else message.Text="Папка расширения поставляется с установщиком Island.";}
+        catch(Exception ex)when(ex is System.IO.IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception){message.Text=ex.Message;}
+    }
     private static CheckBox Check(Panel panel,string text,bool value){var c=new CheckBox{Content=text,IsChecked=value};panel.Children.Add(c);return c;}
     private static ComboBox Combo(Panel panel,System.Collections.IEnumerable values){var c=new ComboBox{ItemsSource=values,SelectedIndex=0,Padding=new(7),Margin=new(0,4,0,4)};panel.Children.Add(c);return c;}
     private static Slider Range(Panel panel,double min,double max,double value){var s=new Slider{Style=(Style)new ResourceDictionary{Source=new Uri("/Island.Wpf;component/GlassResources.xaml",UriKind.Relative)}["GlassSlider"],Minimum=min,Maximum=max,Value=value,Margin=new(8,0,8,0),SmallChange=(max-min)/100,LargeChange=(max-min)/10};panel.Children.Add(s);return s;}

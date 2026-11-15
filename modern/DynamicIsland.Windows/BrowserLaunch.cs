@@ -24,7 +24,7 @@ namespace Island
             foreach (RegistryKey root in new[] { Registry.CurrentUser, Registry.LocalMachine })
             using (var key = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\App Paths\" + exe))
             { string found = key == null ? "" : Convert.ToString(key.GetValue("" )).Trim('"'); if (File.Exists(found)) return found; }
-            string[] candidates = choice == "yandex" ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Yandex\YandexBrowser\Application\browser.exe") }
+            string[] candidates = choice == "yandex" ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Yandex\YandexBrowser\Application\browser.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Yandex\YandexBrowser\Application\browser.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Yandex\YandexBrowser\Application\browser.exe") }
                 : choice == "chrome" ? new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Google\Chrome\Application\chrome.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Google\Chrome\Application\chrome.exe") }
                 : new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe") };
             foreach (string candidate in candidates) if (File.Exists(candidate)) return candidate;
@@ -40,14 +40,28 @@ namespace Island
         {
             return Task.Run(() =>
             {
-                string service = MusicLaunchOptions.ServiceFor(new Uri(url).Host);
-                if (MusicLaunchOptions.SafeUrl(url, service).Length == 0) throw new ArgumentException("Недопустимый адрес музыкального сервиса");
+                string target = "";
+                if (!string.IsNullOrEmpty(url))
+                {
+                    string service = Uri.TryCreate(url, UriKind.Absolute, out var address) ? MusicLaunchOptions.ServiceFor(address.Host) : "";
+                    target = MusicLaunchOptions.SafeUrl(url, service);
+                    if (target.Length == 0) throw new ArgumentException("Недопустимый адрес музыкального сервиса");
+                }
                 // Existing user's browser profile; no autoplay policy switches,
                 // incognito, alternate user-data-dir or forced window activation.
-                // The extension owns tab creation after startup, avoiding a CLI URL /
-                // tabs.create race and reusing session-restored music tabs.
-                using (var process = Process.Start(new ProcessStartInfo(Resolve(browser), "") { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Minimized })) { }
+                // Empty URL bootstraps the bridge; a URL is the explicit bounded fallback
+                // when the browser runs without it. ArgumentList avoids shell quoting.
+                var start = new ProcessStartInfo(Resolve(browser)) { UseShellExecute = true, WindowStyle = ProcessWindowStyle.Minimized };
+                if (target.Length > 0) start.ArgumentList.Add(target);
+                using (var process = Process.Start(start)) { }
             });
         }
+        public static Task OpenExtensions(string browser)=>Task.Run(()=>
+        {
+            string executable=Resolve(browser),name=Path.GetFileName(executable).ToLowerInvariant();
+            var start=new ProcessStartInfo(executable){UseShellExecute=true};
+            start.ArgumentList.Add(name=="browser.exe"?"browser://extensions":name=="msedge.exe"?"edge://extensions":"chrome://extensions");
+            using(var process=Process.Start(start)){}
+        });
     }
 }

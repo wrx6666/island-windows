@@ -127,7 +127,7 @@ public partial class IslandWindow : Window
         Canvas.SetTop(WeatherContent,value.Available?248:62);WeatherDivider.Visibility=value.Available?Visibility.Visible:Visibility.Collapsed;SetPage(page);
         UpdateTimeline();if(IsVisible){SetViewport();ApplyGeometry();}UpdateActivity();
     }
-    public void SetLaunch(string status,string title) {ResumeText.Text=string.IsNullOrEmpty(status)?title:status;}
+    public void SetLaunch(string status,string title) {ResumeText.Text=string.IsNullOrEmpty(status)?title:status;PlayButton.ToolTip=ResumeButton.ToolTip=string.IsNullOrEmpty(status)?"Воспроизвести / пауза":status;}
     public void SetWeather(WeatherSnapshot weather)
     {
         TemperatureText.Text=weather.TemperatureText;DescriptionText.Text=weather.Description;WeatherSymbol.Set(weather.Available?weather.Code:3);

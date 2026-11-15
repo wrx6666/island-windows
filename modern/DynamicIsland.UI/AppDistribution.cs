@@ -34,6 +34,27 @@ public static class AppDistribution
     public static string DataDirectory=>DistributionConfig.Load().IntegrationTest?Path.Combine(Directory.GetParent(Root).FullName,"user-data"):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Island","Data");
     // Velopack names the stable launcher after packTitle, not mainExe.
     public static string StableLauncher=>Path.Combine(Root,"Island.exe");
+    public static string ExtensionDirectory=>Installed?Path.Combine(Root,"browser-extension"):Path.Combine(AppContext.BaseDirectory,"browser-extension");
+    public static void PrepareExtension()
+    {
+        if(Installed)CopyExtension(Path.Combine(AppContext.BaseDirectory,"browser-extension"),ExtensionDirectory);
+    }
+    public static void CopyExtension(string source,string destination)
+    {
+        // Keep the path independent of the version/current junction. Chromium
+        // retains this directory across app updates; never copy browser profiles.
+        string[] files={"background.js","content.js","page.js","popup.html","popup.js","manifest.json"};
+        foreach(string name in files)if(!File.Exists(Path.Combine(source,name)))throw new IOException("Browser extension payload is incomplete");
+        Directory.CreateDirectory(destination);
+        foreach(string name in files)
+        {
+            string path=Path.Combine(destination,name);byte[] bytes=File.ReadAllBytes(Path.Combine(source,name));
+            if(File.Exists(path) && bytes.AsSpan().SequenceEqual(File.ReadAllBytes(path)))continue;
+            string temp=path+".tmp";
+            try{File.WriteAllBytes(temp,bytes);File.Move(temp,path,true);}
+            finally{if(File.Exists(temp))File.Delete(temp);}
+        }
+    }
     private static string TestPrefix=>"Software\\Island\\DistributionTests\\"+Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Root)))[..16]+"\\";
     private static string Prefix=>DistributionConfig.Load().IntegrationTest?TestPrefix:"";
     private static string RunKey=>Prefix+@"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -43,6 +64,7 @@ public static class AppDistribution
         string content=AppContext.BaseDirectory;
         string host=Path.Combine(content,"Island.BrowserHost.exe");
         if(!File.Exists(host) || !File.Exists(Path.Combine(content,"browser-extension","manifest.json")))throw new IOException("Browser integration payload is incomplete");
+        PrepareExtension();
         string manifest=Path.Combine(content,"browser-host.json");
         File.WriteAllText(manifest,JsonSerializer.Serialize(new{name="com.desktopisland.music",description="Island Music Bridge",path=host,type="stdio",allowed_origins=new[]{BrowserIdentity.Origin}}));
         foreach(string path in HostKeys){using var key=Registry.CurrentUser.CreateSubKey(path);key.SetValue("",manifest);}
