@@ -123,6 +123,7 @@ public partial class IslandWindow : Window
         PreviousButton.IsEnabled=value.CanPrevious;NextButton.IsEnabled=value.CanNext;BackButton.IsEnabled=ForwardButton.IsEnabled=SeekSlider.IsEnabled=value.CanSeek;
         updating=true;if(value.Volume>=0 && !VolumeSlider.IsMouseCaptureWithin)VolumeSlider.Value=value.Volume;updating=false;UpdateVolumeLabel();
         VolumeButton.IsEnabled=VolumeSlider.IsEnabled=value.CanVolume;
+        VolumeButton.ToolTip=!MusicCatalog.AllowedSite(value.Source) && value.AudioProcess.Length>0?"Громкость браузера, включая другие его вкладки":"Громкость музыки";
 
         Canvas.SetTop(WeatherContent,value.Available?248:62);WeatherDivider.Visibility=value.Available?Visibility.Visible:Visibility.Collapsed;SetPage(page);
         UpdateTimeline();if(IsVisible){SetViewport();ApplyGeometry();}UpdateActivity();

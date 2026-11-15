@@ -7,7 +7,7 @@ namespace Island
     public sealed class MusicLaunchOptions
     {
         public string Service = "yandex", Browser = "yandex";
-        public bool OnPlay = true, Restore = true, AutoPlay;
+        public bool OnPlay = true, Restore = true, AutoPlay, UseExtension;
         public MusicLaunchOptions Copy() { return (MusicLaunchOptions)MemberwiseClone(); }
         public bool Parse(string line)
         {
@@ -16,9 +16,10 @@ namespace Island
             if (line.StartsWith("MusicLaunchOnPlay=")) { OnPlay = line.Substring(18) != "False"; return true; }
             if (line.StartsWith("MusicRestore=")) { Restore = line.Substring(13) != "False"; return true; }
             if (line.StartsWith("MusicAutoPlay=")) { AutoPlay = line.Substring(14) == "True"; return true; }
+            if (line.StartsWith("MusicUseExtension=")) { UseExtension = line.Substring(18) == "True"; return true; }
             return false;
         }
-        public string[] Lines() { return new[] { "MusicService=" + Service, "MusicBrowser=" + Browser, "MusicLaunchOnPlay=" + OnPlay, "MusicRestore=" + Restore, "MusicAutoPlay=" + AutoPlay }; }
+        public string[] Lines() { return new[] { "MusicService=" + Service, "MusicBrowser=" + Browser, "MusicLaunchOnPlay=" + OnPlay, "MusicRestore=" + Restore, "MusicAutoPlay=" + AutoPlay, "MusicUseExtension="+UseExtension }; }
         public static string Home(string service) { return service == "vk" ? "https://vk.com/audio" : "https://music.yandex.ru/"; }
         public static string ServiceFor(string site) { return site == "music.yandex.ru" || site == "music.yandex.com" ? "yandex" : MusicCatalog.AllowedSite(site) ? "vk" : ""; }
         public static string SafeUrl(string value, string service)

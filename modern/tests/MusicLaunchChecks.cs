@@ -32,7 +32,7 @@ public static class MusicLaunchChecks
         void Check(bool value,string message){if(!value)throw new Exception(message);count++;Console.WriteLine("PASS "+message);}
         try
         {
-            var settings=new Settings();settings.Launch.Restore=false;
+            var settings=new Settings();settings.Launch.Restore=false;settings.Launch.UseExtension=true;
             var fake=new Fake();var calls=new List<string>();
             await using(var launch=Create(fake,settings,false,(_,url)=>{calls.Add(url);return Task.CompletedTask;}))
             {
@@ -76,8 +76,23 @@ public static class MusicLaunchChecks
             var canceled=Create(fake,settings,true,(_,url)=>{calls.Add(url);return Task.CompletedTask;});
             var task=canceled.Play();await canceled.DisposeAsync();
             Check(!await task && calls.Count==0,"Shutdown cancels launch wait before opening a tab");
+            settings.Launch.UseExtension=false;
+            fake=new Fake{LaunchBridgeReady=true};var provider=new NativeFake();
+            await using(var native=Create(fake,settings,true,(_,_)=>throw new Exception("Native mode must not bootstrap extension")))
+            {
+                native.NativePlayer=provider;
+                Check(await native.Play() && provider.Calls==1 && fake.Launches==0 && fake.Plays==0,"Extension-free mode routes directly to Windows provider even when a bridge exists");
+                provider.Ok=false;Check(!await native.Play() && native.Failure==provider.Failure,"Windows provider failure remains explicit without requesting an extension");
+            }
+            var options=new MusicLaunchOptions();Check(!options.UseExtension && options.Parse("MusicUseExtension=True") && options.UseExtension,"Extension-free is default and optional bridge preference parses");
+            Check(MusicService.MatchesBrowser("browser.exe","browser") && !MusicService.MatchesBrowser("YandexMusic.exe","browser") && MusicService.MatchesBrowser("Google.Chrome.UserData.Profile","chrome"),"Browser session matching does not confuse desktop music client with browser");
             Console.WriteLine($"{count} music launch checks passed");
         }
         finally{Settings.FilePath=original;}
+    }
+    private sealed class NativeFake : IMusicLaunchProvider
+    {
+        public int Calls;public bool Ok=true;public string Failure=>"Windows provider unavailable";
+        public Task<bool> Play(string browser,string service,string url,CancellationToken cancellation){Calls++;return Task.FromResult(Ok);}
     }
 }

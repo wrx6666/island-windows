@@ -10,7 +10,8 @@ public static class UiTestProgram
     {
         int i=Array.IndexOf(args,"--output");string directory=Path.GetFullPath(i>=0?args[i+1]:"artifacts/wpf-ui-tests");
         try {
-            if(args.Contains("--updates-check"))await UpdateChecks.Run(app,directory);
+            if(args.Contains("--browser-accessibility-check"))await BrowserAccessibilityChecks.Run(app,directory);
+            else if(args.Contains("--updates-check"))await UpdateChecks.Run(app,directory);
             else if(args.Contains("--collapse-check"))await CollapseChecks.Run(app,directory);
             else if(args.Contains("--glass-check"))await GlassChecks.Run(app,directory);
             else if(args.Contains("--windows-check"))await WindowsChecks.Run(app,directory);

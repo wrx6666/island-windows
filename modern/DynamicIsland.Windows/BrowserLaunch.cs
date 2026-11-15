@@ -18,7 +18,7 @@ namespace Island
                     string id = key == null ? "" : Convert.ToString(key.GetValue("ProgId"));
                     choice = id.StartsWith("Chrome", StringComparison.OrdinalIgnoreCase) ? "chrome" : id.StartsWith("MSEdge", StringComparison.OrdinalIgnoreCase) ? "edge" : id.IndexOf("Yandex", StringComparison.OrdinalIgnoreCase) >= 0 ? "yandex" : "";
                 }
-                if (choice.Length == 0) throw new IOException("Выбери Яндекс Браузер, Chrome или Edge в настройках: текущий браузер Windows не поддерживает этот bridge.");
+                if (choice.Length == 0) throw new IOException("Выбери Яндекс Браузер, Chrome или Edge в настройках: текущий браузер Windows не поддерживается.");
             }
             string exe = choice == "chrome" ? "chrome.exe" : choice == "edge" ? "msedge.exe" : "browser.exe";
             foreach (RegistryKey root in new[] { Registry.CurrentUser, Registry.LocalMachine })
@@ -61,6 +61,16 @@ namespace Island
             string executable=Resolve(browser),name=Path.GetFileName(executable).ToLowerInvariant();
             var start=new ProcessStartInfo(executable){UseShellExecute=true};
             start.ArgumentList.Add(name=="browser.exe"?"browser://extensions":name=="msedge.exe"?"edge://extensions":"chrome://extensions");
+            using(var process=Process.Start(start)){}
+        });
+        public static Task StartMusicWindow(string browser,string url)=>Task.Run(()=>
+        {
+            string service=Uri.TryCreate(url,UriKind.Absolute,out var address)?MusicLaunchOptions.ServiceFor(address.Host):"";
+            string safe=MusicLaunchOptions.SafeUrl(url,service);if(safe.Length==0)throw new ArgumentException("Недопустимый адрес музыки");
+            var start=new ProcessStartInfo(Resolve(browser)){UseShellExecute=true,WindowStyle=ProcessWindowStyle.Minimized};
+            start.ArgumentList.Add("--new-window");start.ArgumentList.Add(safe);
+            // Ordinary browser and existing profile. No debug port, autoplay override,
+            // extension, custom profile, script or credential extraction.
             using(var process=Process.Start(start)){}
         });
     }

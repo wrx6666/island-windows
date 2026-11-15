@@ -19,9 +19,13 @@ namespace Island
         private string artKey = "";
         private MusicSnapshot systemCurrent = new MusicSnapshot();
         private readonly IMusicBridge browser;
+        private bool useBridge;
+        private string preferredBrowser="";
+        private float nativeVolume=-1;
+        public long StateRevision {get;private set;}
         private readonly IArtworkDecoder decoder;
         private readonly Func<GlobalSystemMediaTransportControlsSession,bool> sessionFilter;
-        public MusicSnapshot Current { get { return browser != null && browser.Current.Available ? browser.Current : systemCurrent; } }
+        public MusicSnapshot Current { get { return useBridge && browser != null && browser.Current.Available ? browser.Current : systemCurrent; } }
         public string LastError = "";
         public string ArtworkError = "";
         public string CommandFailure { get; private set; } = "";
@@ -29,11 +33,39 @@ namespace Island
         public event Action Changed;
         public bool Initialized { get; private set; }
         public bool HasControlSession { get { return IsBrowser || session != null; } }
-        public bool LaunchBridgeReady { get { return browser != null && browser.LaunchReady; } }
-        public MusicService(Action<Action> send, IMusicBridge bridge, IArtworkDecoder artworkDecoder,Func<GlobalSystemMediaTransportControlsSession,bool> filter=null)
+        public bool LaunchBridgeReady { get { return useBridge && browser != null && browser.LaunchReady; } }
+        public MusicService(Action<Action> send, IMusicBridge bridge, IArtworkDecoder artworkDecoder,Func<GlobalSystemMediaTransportControlsSession,bool> filter=null,bool enableBridge=true)
         {
             dispatch = send;
-            decoder=artworkDecoder;sessionFilter=filter; browser=bridge; if(browser!=null) browser.Changed+=Notify;
+            decoder=artworkDecoder;sessionFilter=filter; browser=bridge;useBridge=enableBridge;if(browser!=null) browser.Changed+=BrowserChanged;
+        }
+        private void BrowserChanged(){if(useBridge)Notify();}
+        public void SetBridgeEnabled(bool enabled)
+        {
+            if(useBridge==enabled || disposed)return;
+            useBridge=enabled;preferredBrowser="";nativeVolume=-1;
+            if(enabled && started)browser?.Start();
+            browser?.SetArtworkActive(enabled && artwork);artKey="";SelectSession();Notify();
+        }
+        public static bool MatchesBrowser(string source,string process)
+        {
+            string value=(source??"").ToLowerInvariant();
+            return process switch{
+                "browser"=>value=="browser.exe" || value.EndsWith("\\browser.exe") || value.Contains("yandexbrowser") || value.Contains("yandex.browser"),
+                "chrome"=>value=="chrome.exe" || value.Contains("google.chrome"),
+                "msedge"=>value=="msedge.exe" || value=="msedge" || value.Contains("microsoftedge"),
+                _=>false};
+        }
+        public bool NativeBrowserPlaying=>!useBridge && session!=null && MatchesBrowser(session.SourceAppUserModelId,preferredBrowser) && systemCurrent.Playing && systemCurrent.Available;
+        public bool HasNativeBrowserSession=>!useBridge && session!=null && MatchesBrowser(session.SourceAppUserModelId,preferredBrowser);
+        // Called on the owning UI context. Selection changes arrive through GSMTC events.
+        public void PreferBrowser(string process)
+        {
+            if(preferredBrowser==process)return;preferredBrowser=process;nativeVolume=-1;artKey="";SelectSession();
+        }
+        public void NativeVolume(float value)
+        {
+            nativeVolume=value;systemCurrent.Volume=value;Notify();
         }
 
         // System winmds are split on Windows 11. A direct completion bridge avoids
@@ -46,7 +78,7 @@ namespace Island
         public async void Start()
         {
             if (started || disposed) return; started = true;
-            if (browser != null) browser.Start();
+            if (useBridge && browser != null) browser.Start();
             try
             {
                 var result = await Await(GlobalSystemMediaTransportControlsSessionManager.RequestAsync());
@@ -60,7 +92,7 @@ namespace Island
             finally { Initialized = true; Notify(); }
         }
         private void SessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender, SessionsChangedEventArgs args) { dispatch(SelectSession); }
-        private void CurrentChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) { dispatch(SelectSession); }
+        private void CurrentChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args) { dispatch(()=>{StateRevision++;SelectSession();}); }
         private void SelectSession()
         {
             if (disposed || manager == null) return;
@@ -68,8 +100,9 @@ namespace Island
             {
                 var selected = manager.GetCurrentSession();
                 if(sessionFilter!=null)selected=manager.GetSessions().FirstOrDefault(sessionFilter);
+                else if(preferredBrowser.Length>0)selected=manager.GetSessions().Where(s=>MatchesBrowser(s.SourceAppUserModelId,preferredBrowser)).OrderByDescending(s=>s.GetPlaybackInfo().PlaybackStatus==GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing).FirstOrDefault();
                 // Prefer a dedicated music client over an unrelated browser video.
-                foreach (var candidate in sessionFilter==null?manager.GetSessions():Array.Empty<GlobalSystemMediaTransportControlsSession>())
+                foreach (var candidate in sessionFilter==null && preferredBrowser.Length==0?manager.GetSessions():Array.Empty<GlobalSystemMediaTransportControlsSession>())
                 {
                     string id = candidate.SourceAppUserModelId.ToLowerInvariant();
                     if ((id.Contains("yandex") || id.Contains("vk") || id.Contains("music")) && candidate.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
@@ -79,13 +112,14 @@ namespace Island
                 {
                     Unsubscribe(); session = selected; artKey = "";
                     if (session != null) { session.MediaPropertiesChanged += PropertiesChanged; session.PlaybackInfoChanged += PlaybackChanged; session.TimelinePropertiesChanged += TimelineChanged; }
+                    Replace(new MusicSnapshot());
                 }
                 Refresh();
             }
             catch (Exception ex) { LastError = ex.Message; }
         }
-        private void PropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) { dispatch(delegate { artKey = ""; Refresh(); }); }
-        private void PlaybackChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args) { dispatch(RefreshPlayback); }
+        private void PropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args) { dispatch(delegate { StateRevision++;artKey = ""; Refresh(); }); }
+        private void PlaybackChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args) { dispatch(()=>{StateRevision++;RefreshPlayback();}); }
         private void TimelineChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args) { dispatch(delegate { RefreshTimeline(systemCurrent); Notify(); }); }
         private void RefreshTimeline(MusicSnapshot track)
         {
@@ -109,7 +143,7 @@ namespace Island
         public void SetArtworkActive(bool value)
         {
             if (disposed || artwork == value) return;
-            artwork = value; artKey = ""; if (browser != null) browser.SetArtworkActive(value);
+            artwork = value; artKey = ""; if (browser != null) browser.SetArtworkActive(value && useBridge);
             if (!value) { revision++; systemCurrent.Dispose(); }
             else Refresh();
         }
@@ -128,6 +162,7 @@ namespace Island
                 bool playing = info.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
                 if (key == artKey) { RefreshPlayback(); return; }
                 var next = new MusicSnapshot { Title = props.Title, Artist = props.Artist, Source = source.SourceAppUserModelId, Playing = playing, CanPrevious = info.Controls.IsPreviousEnabled, CanNext = info.Controls.IsNextEnabled, Color = Fallback(key) };
+                foreach(string process in new[]{"browser","chrome","msedge"})if(MatchesBrowser(next.Source,process)){next.AudioProcess=process;next.Volume=process==preferredBrowser?nativeVolume:-1;break;}
                 RefreshTimeline(next); next.SecondaryColor = SecondaryPalette(null, next.Color);
                 ArtworkError = props.Thumbnail == null ? "No thumbnail supplied" : "";
                 if (artwork && props.Thumbnail != null)
@@ -160,8 +195,8 @@ namespace Island
         }
         public void DiagnosticTrack(MusicSnapshot track) { Replace(track); }
         private void Replace(MusicSnapshot next) { var old = systemCurrent; systemCurrent = next; if(!ReferenceEquals(old,next)) old.Dispose(); Notify(); }
-        private void Notify() { if (!disposed && Changed != null) Changed(); }
-        public bool IsBrowser { get { return browser != null && browser.Current.Available; } }
+        private void Notify() { if (!disposed)Changed?.Invoke(); }
+        public bool IsBrowser { get { return useBridge && browser != null && browser.Current.Available; } }
         private bool BrowserCommands
         {
             get
@@ -235,14 +270,14 @@ namespace Island
                 }
                 if (session == null)
                 {
-                    CommandFailure = browser != null && browser.Connected ? "Island Music Bridge подключён, но трек не обнаружен. Обнови вкладку Яндекс Музыки/VK и включи трек." : "Музыкальный плеер не обнаружен. Для Яндекс Браузера: Island.BrowserSetup.exe → «Подключить», затем открой Island Music Bridge в браузере и проверь соединение.";
+                    CommandFailure = !useBridge ? "Музыкальная сессия Windows не обнаружена. Нажми Play в острове, чтобы открыть выбранный музыкальный сервис." : browser != null && browser.Connected ? "Island Music Bridge подключён, но трек не обнаружен. Обнови вкладку Яндекс Музыки/VK и включи трек." : "Музыкальный плеер не обнаружен. Проверь подключение Island Music Bridge в браузере.";
                     return false;
                 }
                 bool accepted = action == "next" ? await Await(session.TrySkipNextAsync()) : action == "previous" ? await Await(session.TrySkipPreviousAsync()) : await Await(session.TryTogglePlayPauseAsync());
-                if (!accepted) CommandFailure = "Плеер Windows отклонил команду. Для музыки в браузере проверь соединение Island Music Bridge; если музыку запускаешь в приложении, проверь управление в самом плеере.";
+                if (!accepted) CommandFailure = "Плеер Windows отклонил команду. Проверь, доступно ли это действие в самом музыкальном плеере.";
                 return accepted;
             }
-            catch (Exception ex) { LastError = ex.Message; CommandFailure = "Не удалось выполнить музыкальную команду. Перезапусти плеер и проверь соединение расширения, если музыка играет в браузере."; return false; }
+            catch (Exception ex) { LastError = ex.Message; CommandFailure = "Не удалось выполнить музыкальную команду. Проверь состояние музыкального плеера."; return false; }
             finally { toggling = false; }
         }
         public static Color Fallback(string key) => Color.Fallback(key);

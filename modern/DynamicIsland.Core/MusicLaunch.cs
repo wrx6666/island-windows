@@ -25,6 +25,7 @@ namespace Island
         public int StartupBridgeWaitMilliseconds = 5000, ExistingBridgeWaitMilliseconds = 1500;
         public Func<string, bool> BrowserRunning ;
         public Func<string, string, Task> StartBrowser ;
+        public IMusicLaunchProvider NativePlayer {get;set;}
         public event Action Changed;
         public bool Busy { get { return pending != null && !pending.IsCompleted; } }
         public MusicLaunch(IMusicService service, Settings configuration, Func<string,bool> running, Func<string,string,Task> start) { music = service; settings = configuration; BrowserRunning=running; StartBrowser=start; }
@@ -62,6 +63,21 @@ namespace Island
             {
                 State("Проверяем музыкальную сессию…");
                 if (!music.Initialized) await music.WaitUntil(() => music.Initialized, 2000, stop.Token);
+                string service = settings.Launch.Restore && Last.Available ? Last.Service : settings.Launch.Service;
+                string url = settings.Launch.Restore && Last.Available && Last.Url != null && Last.Url.Length > 0 ? Last.Url : MusicLaunchOptions.Home(service);
+                if(!settings.Launch.UseExtension)
+                {
+                    if(!settings.Launch.OnPlay)
+                    {
+                        if(music.HasControlSession && await music.PlayExisting()){State("Музыка играет");return true;}
+                        return Fail("Запуск сервиса по Play отключён в настройках.");
+                    }
+                    if(NativePlayer==null)return Fail("Подключение браузера через Windows недоступно.");
+                    State("Подключаем музыкальный браузер через Windows…");
+                    bool playing=await NativePlayer.Play(settings.Launch.Browser,service,url,stop.Token);
+                    if(!playing)return Fail(NativePlayer.Failure);
+                    State("Музыка играет");return true;
+                }
                 if (music.HasControlSession)
                 {
                     if (await music.PlayExisting()) { State("Музыка играет"); return true; }
@@ -70,8 +86,6 @@ namespace Island
                     if (music.LaunchBridgeReady || !settings.Launch.OnPlay) return Fail(music.CommandFailure);
                 }
                 if (!settings.Launch.OnPlay) return Fail("Запуск сервиса по Play отключён в настройках.");
-                string service = settings.Launch.Restore && Last.Available ? Last.Service : settings.Launch.Service;
-                string url = settings.Launch.Restore && Last.Available && Last.Url != null && Last.Url.Length > 0 ? Last.Url : MusicLaunchOptions.Home(service);
                 if (!music.LaunchBridgeReady)
                 {
                     bool running = await Task.Run(() => BrowserRunning(settings.Launch.Browser));

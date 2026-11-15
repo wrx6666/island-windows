@@ -38,6 +38,11 @@ public interface IMusicService
     Task<bool> LaunchPlay(string service,string url);
     Task<bool> WaitUntil(Func<bool> ready,int timeout,CancellationToken cancellation);
 }
+public interface IMusicLaunchProvider
+{
+    string Failure {get;}
+    Task<bool> Play(string browser,string service,string url,CancellationToken cancellation);
+}
 public static class MusicCatalog
 {
     public static bool AllowedSite(string site) => site is "music.yandex.ru" or "music.yandex.com" or "vk.com" or "vk.ru" or "music.vk.com";

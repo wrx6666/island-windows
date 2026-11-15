@@ -16,6 +16,7 @@ public partial class App : Application
     public MusicService Music {get;private set;}
     public BrowserMusic Bridge {get;private set;}
     public MusicLaunch Launch {get;private set;}
+    public NativeBrowserPlayer NativePlayer {get;private set;}
     public AudioMixer Mixer {get;private set;}
     public MusicLevels Levels {get;private set;}
     public AppUpdates Updates {get;private set;}
@@ -25,6 +26,7 @@ public partial class App : Application
     private OneShot minute,timeline,volumeDelay;
     private float? requestedVolume;
     private bool volumeBusy;
+    private string nativeVolumeKey="";
     private SettingsWindow settingsWindow;
     private string dataDirectory;
     private bool scenario;
@@ -49,7 +51,7 @@ public partial class App : Application
             Panel=new IslandWindow{Config=Config}; MainWindow=Panel;new WindowInteropHelper(Panel).EnsureHandle();
             if(e.Args.Contains("--diagnostics") || DiagnosticHost)Panel.Diagnostics=new();
             Levels=new MusicLevels();Mixer=new AudioMixer();Panel.Levels=Levels;
-            var decoder=new ArtworkDecoder();Bridge=new BrowserMusic(Dispatch,decoder);Music=new MusicService(Dispatch,Bridge,decoder);Launch=new MusicLaunch(Music,Config,BrowserLaunch.IsRunning,BrowserLaunch.Start);
+            var decoder=new ArtworkDecoder();Bridge=new BrowserMusic(Dispatch,decoder);Music=new MusicService(Dispatch,Bridge,decoder,enableBridge:Config.Launch.UseExtension);NativePlayer=new(Music,Mixer);Launch=new MusicLaunch(Music,Config,BrowserLaunch.IsRunning,BrowserLaunch.Start){NativePlayer=NativePlayer};NativePlayer.StatusChanged+=status=>Panel.SetLaunch(status,Launch.Last.Title);
             weather=new WeatherService(Dispatch);weather.Changed+=()=>Panel.SetWeather(weather.Current);
             minute=new(Dispatch,ClockTick);timeline=new(Dispatch,TimelineTick);volumeDelay=new(Dispatch,ApplyVolume){Interval=60};
             Overlay=new OverlayController(Panel,Config,Dispatch,!scenario,!scenario);Overlay.PositionChanged+=Save;Overlay.VisibilityChanged+=VisibilityChanged;
@@ -62,7 +64,7 @@ public partial class App : Application
             Panel.SetLaunch("",Launch.Last.Available?Launch.Last.Title+" · "+Launch.Last.Artist:"Яндекс Музыка / VK");Panel.SetWeather(weather.Current);Panel.SetTrack(Music.Current);Panel.UpdateClock();VisibilityChanged();
             DispatcherUnhandledException+=(_,args)=>{Log(args.Exception.ToString());tray?.Notify("Ошибка: "+args.Exception.Message);args.Handled=true;};
             if(DiagnosticRunner!=null){await DiagnosticRunner(this,e.Args);await Stop();return;}
-            Music.Start();Updates.Start();
+            Music.Start();Updates.Start();await ConfigureNativeBrowser();
             if(AppDistribution.FirstRun)ShowSettings();
             if(e.Args.Contains("--open"))Overlay.Open(true);
             if(e.Args.Contains("--settings"))ShowSettings();
@@ -79,7 +81,23 @@ public partial class App : Application
     }
     private void ClockTick(){Panel.UpdateClock();minute.Interval=(int)Math.Max(1000,60000-DateTime.Now.TimeOfDay.TotalMilliseconds%60000);minute.Start();}
     private void TimelineTick(){Panel.UpdateTimeline();if(Panel.IsVisible && Panel.ExpandedState && Music.Current.Playing){timeline.Interval=1000;timeline.Start();}}
-    private void MusicChanged(){if(stopping)return;Launch.Observe(Music.Current);Panel.SetTrack(Music.Current);Overlay.Playing=Music.Current.Available && Music.Current.Playing;Overlay.Reconcile();VisibilityChanged();}
+    private void MusicChanged(){if(stopping)return;Launch.Observe(Music.Current);Panel.SetTrack(Music.Current);Overlay.Playing=Music.Current.Available && Music.Current.Playing;Overlay.Reconcile();VisibilityChanged();RefreshNativeVolume();}
+    private async Task ConfigureNativeBrowser()
+    {
+        if(Config.Launch.UseExtension)return;
+        string choice=Config.Launch.Browser;
+        try{string executable=await Task.Run(()=>BrowserLaunch.Resolve(choice));if(!stopping && !Config.Launch.UseExtension && Config.Launch.Browser==choice)Music.PreferBrowser(Path.GetFileNameWithoutExtension(executable).ToLowerInvariant());}
+        catch(Exception ex)when(ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception){Log("Music browser: "+ex.Message);}
+    }
+    private async void RefreshNativeVolume()
+    {
+        var track=Music.Current;
+        if(Config.Launch.UseExtension || !track.Available){nativeVolumeKey="";return;}
+        if(track.CanVolume || track.AudioProcess.Length==0)return;
+        string key=track.Source+"\n"+track.Title+"\n"+track.Artist;if(nativeVolumeKey==key)return;nativeVolumeKey=key;
+        try{float value=await Mixer.MusicVolume(track.AudioProcess,null);if(!stopping && !Config.Launch.UseExtension && ReferenceEquals(track,Music.Current) && !track.CanVolume && value>=0)Music.NativeVolume(value);}
+        catch(Exception ex){if(!stopping)Log("Music volume: "+ex.Message);}
+    }
     private async void Play()
     {
         Panel.Diagnostics?.Input();
@@ -98,7 +116,7 @@ public partial class App : Application
     private async void ApplyVolume()
     {
         if(volumeBusy)return;volumeBusy=true;
-        try {while(requestedVolume.HasValue){float value=requestedVolume.Value;requestedVolume=null;if(Music.IsBrowser && Music.Current.CanVolume){if(!await Music.SetVolume(value))tray.Notify(Music.CommandFailure);}else await Mixer.MusicVolume(MusicLevels.ProcessFor(Music.Current),value);}}
+        try {while(requestedVolume.HasValue){float value=requestedVolume.Value;requestedVolume=null;if(Music.IsBrowser && Music.Current.CanVolume){if(!await Music.SetVolume(value))tray.Notify(Music.CommandFailure);}else {float actual=await Mixer.MusicVolume(MusicLevels.ProcessFor(Music.Current),value);if(actual>=0)Music.NativeVolume(actual);}}}
         catch(Exception ex){tray.Notify(ex.Message);}finally{volumeBusy=false;}
     }
     public string ConfigureHotkeys(int music,int mute,int overlay) => isolated?"В изолированной проверке глобальные клавиши отключены.":hotkeys.Configure(music,mute,overlay);
@@ -110,7 +128,7 @@ public partial class App : Application
     }
     public void ToggleAppMute()=>Mute();
     public void RefreshWeather(){weather.ForceRefresh();}
-    public void SettingsApplied(){Panel.SetTrack(Music.Current);Overlay.RefreshSettings();Overlay.Open(true,true);}
+    public async void SettingsApplied(){Music.SetBridgeEnabled(Config.Launch.UseExtension);await ConfigureNativeBrowser();if(stopping)return;Panel.SetTrack(Music.Current);Overlay.RefreshSettings();Overlay.Open(true,true);}
     private void ShowMenu()
     {
         Overlay.Busy=true;var menu=new ContextMenu();void Item(string text,Action action){var item=new MenuItem{Header=text};item.Click+=(_,_)=>action();menu.Items.Add(item);}
@@ -119,7 +137,7 @@ public partial class App : Application
     }
     public async Task Stop()
     {
-        if(stopping)return;stopping=true;Updates?.Dispose();settingsWindow?.Close();hotkeys?.Dispose();Overlay?.Dispose();minute?.Dispose();timeline?.Dispose();volumeDelay?.Dispose();weather?.Dispose();Music?.Dispose();if(Launch!=null)await Launch.DisposeAsync();if(Levels!=null)await Task.Run(Levels.Dispose);tray?.Dispose();
+        if(stopping)return;stopping=true;Updates?.Dispose();settingsWindow?.Close();hotkeys?.Dispose();Overlay?.Dispose();minute?.Dispose();timeline?.Dispose();volumeDelay?.Dispose();weather?.Dispose();NativePlayer?.Dispose();Music?.Dispose();if(Launch!=null)await Launch.DisposeAsync();if(Levels!=null)await Task.Run(Levels.Dispose);tray?.Dispose();
         if(Mixer!=null)await Mixer.DisposeAsync();try{await Settings.FlushAsync();}catch(Exception ex)when(ex is IOException or UnauthorizedAccessException){Log(ex.ToString());}Panel?.Close();if(ownsMutex){instance.ReleaseMutex();ownsMutex=false;}instance?.Dispose();Shutdown();
     }
     private void Log(string text){try{File.AppendAllText(Path.Combine(dataDirectory??AppContext.BaseDirectory,"island.log"),DateTime.Now.ToString("O")+" "+text+Environment.NewLine);}catch(IOException){} }

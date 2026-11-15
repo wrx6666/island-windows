@@ -18,7 +18,7 @@ public sealed class SettingsWindow : Window
 {
     private readonly App app;
     private readonly TextBlock status=new(){TextWrapping=TextWrapping.Wrap,Foreground=new SolidColorBrush(Color.FromRgb(255,181,196)),Margin=new(0,8,0,8)};
-    private readonly CheckBox floating,hover,hideFull,allowPin,animations,motion,visualEnabled,launchOnPlay,restore,autoPlay,startup;
+    private readonly CheckBox floating,hover,hideFull,allowPin,animations,motion,visualEnabled,launchOnPlay,restore,autoPlay,startup,useExtension;
     private readonly HotkeyBox musicKey,muteKey,overlayKey;
     private readonly ComboBox monitor,mode,palette,browser,service,apps,visualProcess;
     private readonly Slider x,y,delay,intensity,sensitivity,speed,appVolume,masterVolume;
@@ -44,12 +44,15 @@ public sealed class SettingsWindow : Window
         var visual=Tab("Подсветка");visualEnabled=Check(visual,"Включить эффект",app.Config.Visual.Enabled);Label(visual,"Режим");mode=Combo(visual,new[]{"Плавные переливы","RGB-обводка","Комбинированный"});mode.SelectedIndex=(int)app.Config.Visual.Mode;Label(visual,"Интенсивность");intensity=Range(visual,0,100,app.Config.Visual.Intensity);Label(visual,"Чувствительность к ударам");sensitivity=Range(visual,25,200,app.Config.Visual.Sensitivity);Label(visual,"Скорость переливов");speed=Range(visual,25,200,app.Config.Visual.Speed);Label(visual,"Палитра");palette=Combo(visual,new[]{"Из обложки","Фиолетовый / мятный","Тёплый / розовый","Голубой / сиреневый"});palette.SelectedIndex=app.Config.Visual.Palette;Label(visual,"Процесс для аудиоанализа (пусто = музыкальный источник)");visualProcess=Combo(visual,new[]{app.Config.Visual.Process});visualProcess.IsEditable=true;visualProcess.Text=app.Config.Visual.Process;Label(visual,app.Levels.Status);
         var launch=Tab("Запуск");Label(launch,"Музыкальный сервис");service=Combo(launch,new[]{"Яндекс Музыка","VK Музыка"});service.SelectedIndex=app.Config.Launch.Service=="vk"?1:0;Label(launch,"Браузер");browser=Combo(launch,new[]{"По умолчанию Windows","Яндекс Браузер","Chrome","Edge"});browser.SelectedIndex=Array.IndexOf(new[]{"default","yandex","chrome","edge"},app.Config.Launch.Browser);launchOnPlay=Check(launch,"Запускать сервис по Play",app.Config.Launch.OnPlay);restore=Check(launch,"Продолжать последнюю доступную сессию",app.Config.Launch.Restore);autoPlay=Check(launch,"Автоматически включать музыку после входа в Windows",app.Config.Launch.AutoPlay);
         startupInitial=Startup.Enabled;startup=Check(launch,"Запускать Island вместе с Windows",startupInitial);Label(launch,"Настройки сохраняются при обновлении Island. Точная очередь и позиция трека зависят от музыкального сервиса.");
-        Label(launch,"Расширение: "+(app.Bridge.Connected?"подключено":"нет соединения")+" · "+(app.Music.HasControlSession?"плеер обнаружен":"плеер не обнаружен"));
-        Label(launch,"Для запуска музыки в закрытой вкладке нужен включённый Island Music Bridge. Без расширения доступно управление уже существующим плеером Windows. Расширение из режима разработчика браузер может отключать: Island не меняет защитные настройки браузера.");
+        useExtension=Check(launch,"Использовать Island Music Bridge (дополнительный режим)",app.Config.Launch.UseExtension);
+        Label(launch,"По умолчанию расширение не требуется: Play открывает музыку и использует доступную кнопку страницы через Windows. Дальше работают медиакоманды Windows. В первый раз потребуется войти в музыкальный аккаунт. Если браузер не предоставляет кнопку или медиасессию, Island сообщит об этом.");
+        Label(launch,"Без расширения громкость регулируется для звука браузера, включая другие его вкладки. Обложка, трек и доступность перемотки зависят от данных, предоставленных браузером Windows.");
         var bridgeFolder=new Button{Content="Папка Music Bridge",HorizontalAlignment=HorizontalAlignment.Left};launch.Children.Add(bridgeFolder);
         bridgeFolder.Click+=(_,_)=>OpenExtensionFolder(status);
         var extensions=new Button{Content="Расширения браузера",HorizontalAlignment=HorizontalAlignment.Left};launch.Children.Add(extensions);
         extensions.Click+=async(_,_)=>{try{await BrowserLaunch.OpenExtensions(new[]{"default","yandex","chrome","edge"}[Math.Max(0,browser.SelectedIndex)]);}catch(Exception ex){status.Text=ex.Message;}};
+        void BridgeVisibility(){bridgeFolder.Visibility=extensions.Visibility=useExtension.IsChecked==true?Visibility.Visible:Visibility.Collapsed;}
+        useExtension.Checked+=(_,_)=>BridgeVisibility();useExtension.Unchecked+=(_,_)=>BridgeVisibility();BridgeVisibility();
         Label(launch,"Погодные данные: Open-Meteo · open-meteo.com");
         var updates=Tab("Обновления");Label(updates,"Island · "+app.Updates.CurrentVersion);
         var updateStatus=new TextBlock{TextWrapping=TextWrapping.Wrap,FontSize=13,Margin=new(0,12,0,12)};updates.Children.Add(updateStatus);
@@ -61,7 +64,7 @@ public sealed class SettingsWindow : Window
         Action changed=UpdateStatus;app.Updates.Changed+=changed;Closed+=(_,_)=>app.Updates.Changed-=changed;
         automatic.Click+=async(_,_)=>await app.Updates.SetAutomaticAsync(automatic.IsChecked==true);checkUpdate.Click+=async(_,_)=>await app.Updates.CheckAsync();installUpdate.Click+=async(_,_)=>await app.Updates.DownloadAndRestartAsync();UpdateStatus();
         Label(updates,"Обновление устанавливается только по нажатию кнопки. Island перезапустится, настройки сохранятся.");
-        Label(updates,"Музыка в браузере");Label(updates,"Для Яндекс Музыки и VK включите Island Music Bridge в браузере: Расширения → Режим разработчика → Загрузить распакованное.");
+        Label(updates,"Дополнительное расширение");Label(updates,"Обычный режим работает без расширения. Music Bridge можно отдельно включить в разделе «Запуск», если нужны дополнительные данные из музыкальной вкладки.");
         var extensionFolder=new Button{Content="Открыть папку расширения",FontSize=13,Padding=new(12,8,12,8),HorizontalAlignment=HorizontalAlignment.Left};updates.Children.Add(extensionFolder);
         extensionFolder.Click+=(_,_)=>OpenExtensionFolder(updateStatus);
         outer.Loaded+=async(_,_)=>{try{masterVolume.Value=await EndpointVolume.Level();masterVolume.Value*=100;await RefreshApps();}catch(Exception ex){status.Text=ex.Message;}finally{loaded=true;}};
@@ -89,7 +92,7 @@ public sealed class SettingsWindow : Window
             var s=app.Config;s.MusicHotkey=musicKey.Binding;s.MuteHotkey=muteKey.Binding;s.OverlayHotkey=overlayKey.Binding;s.AudioProcess=apps.Text.Trim();
             s.FloatingIcon=floating.IsChecked==true;s.OverlayHover=hover.IsChecked==true;s.OverlayAutoHide=hideFull.IsChecked==true;s.OverlayAllowPin=allowPin.IsChecked==true;s.Animations=animations.IsChecked==true;s.MusicMotion=motion.IsChecked==true;s.OverlayMonitor=(monitor.SelectedItem as DisplayMonitor)?.DeviceName??"";s.OverlayX=x.Value;s.OverlayY=y.Value;s.OverlayDelay=(int)delay.Value;
             s.Visual=new(){Enabled=visualEnabled.IsChecked==true,Mode=(VisualMode)mode.SelectedIndex,Intensity=(int)intensity.Value,Sensitivity=(int)sensitivity.Value,Speed=(int)speed.Value,Palette=palette.SelectedIndex,Process=visualProcess.Text.Trim()};
-            s.Launch=new(){Service=service.SelectedIndex==1?"vk":"yandex",Browser=new[]{"default","yandex","chrome","edge"}[Math.Max(0,browser.SelectedIndex)],OnPlay=launchOnPlay.IsChecked==true,Restore=restore.IsChecked==true,AutoPlay=autoPlay.IsChecked==true};
+            s.Launch=new(){Service=service.SelectedIndex==1?"vk":"yandex",Browser=new[]{"default","yandex","chrome","edge"}[Math.Max(0,browser.SelectedIndex)],OnPlay=launchOnPlay.IsChecked==true,Restore=restore.IsChecked==true,AutoPlay=autoPlay.IsChecked==true,UseExtension=useExtension.IsChecked==true};
             if(startup.IsChecked!=startupInitial)Startup.Set(startup.IsChecked==true);
             await s.SaveAsync();app.SettingsApplied();status.Text="Настройки сохранены";
         }
